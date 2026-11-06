@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solbot live</title>
+<meta name="description" content="A Solana memecoin bot and its test bots trading with virtual money, live.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏁</text></svg>">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #f7f6f2; --panel: #ffffff; --fg: #1b1b18; --muted: #6b6a63; --line: #e4e2da;
+    --ok: #1f8a4c; --bad: #c4372e; --warn: #b26a00; --accent: #2f6fde; --accent2: #e8862a; --lane: #fbfaf7;
+    --radius: 14px; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
+    --serif: "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121210; --panel: #1b1b18; --fg: #f1efe8; --muted: #a3a197; --line: #2d2c27;
+      --ok: #4cc27f; --bad: #ef6a5e; --warn: #e3a64a; --accent: #6c9bf0; --accent2: #f0a35a; --lane: #201f1c;
+      --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121210; --panel: #1b1b18; --fg: #f1efe8; --muted: #a3a197; --line: #2d2c27;
+    --ok: #4cc27f; --bad: #ef6a5e; --warn: #e3a64a; --accent: #6c9bf0; --accent2: #f0a35a; --lane: #201f1c; --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 72rem; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 20px; }
+  .paper { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; background: var(--panel); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .dot.stale { background: var(--warn); }
+  h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(30px, 6vw, 44px); margin: 10px 0 6px; letter-spacing: -.01em; }
+  .lede { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.5; max-width: 66ch; }
+  .lede b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .up { color: var(--ok); } .down { color: var(--bad); }
+  .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr)); }
+  .tile, .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .tile { padding: 14px 16px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .tile span { font-size: 13px; color: var(--muted); }
+  .tile b { font-family: var(--serif); font-weight: 400; font-size: 30px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .tile small { font-size: 13px; color: var(--muted); }
+  .meter { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 2px; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--ok); border-radius: 999px; transition: width .8s ease; }
+  .card { padding: 18px 20px; min-width: 0; display: grid; gap: 8px; align-content: start; position: relative; }
+  .card h2 { margin: 0; font-size: 18px; font-weight: 600; }
+  .card > p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+  .wide { grid-column: 1 / -1; }
+  .scroll { overflow: auto; max-height: 30rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th { position: sticky; top: 0; background: var(--panel); text-align: left; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td.num, th.num { text-align: right; }
+  td.note { white-space: normal; min-width: 9rem; }
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; }
+  .pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+  .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+  .race-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .race-lead { font-size: 13px; color: var(--muted); } .race-lead b { color: var(--fg); }
+  #race { position: relative; min-height: 120px; }
+  #race svg { display: block; overflow: visible; }
+  #race text, .chart text { font-family: var(--sans); font-size: 12px; fill: var(--fg); font-variant-numeric: tabular-nums; }
+  #race .zero { stroke: var(--line); stroke-dasharray: 3 3; }
+  #race .lane { fill: var(--lane); stroke: var(--line); }
+  #race .lead .lane { stroke: var(--ok); stroke-width: 1.5; }
+  #race .bar.up { fill: var(--ok); } #race .bar.down { fill: var(--bad); } #race .bar.flat { fill: var(--muted); }
+  #race .mover { font-size: 11px; } #race .mover.up { fill: var(--ok); } #race .mover.down { fill: var(--bad); }
+  #race .is-main .name { font-weight: 700; }
+  .chart { min-height: 200px; }
+  .chart .muted { fill: var(--muted); }
+  .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0,0,0,.12); border-radius: 10px; padding: 6px 10px; font-size: 12px; max-width: 18rem; opacity: 0; transition: opacity .15s; z-index: 2; }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 20px; }
+  summary { cursor: pointer; font-weight: 600; }
+  dl { display: grid; grid-template-columns: minmax(7rem, 11rem) 1fr; gap: 6px 16px; margin: 14px 0 0; font-size: 13px; line-height: 1.5; }
+  dt { font-weight: 600; } dd { margin: 0; color: var(--muted); }
+  footer { font-size: 12px; color: var(--muted); text-align: center; }
+  .error { color: var(--bad); font-size: 13px; }
+  @media (max-width: 560px) { dl { grid-template-columns: 1fr; } dd { margin-bottom: 8px; } .narrow-hide { display: none; } }
+  @media (prefers-reduced-motion: no-preference) {
+    #race .lead .lane { animation: glow 1.6s ease-in-out infinite; }
+    .dot:not(.stale) { animation: pulse 2s ease-out infinite; }
+  }
+  @keyframes glow { 0%, 100% { stroke-opacity: .35; } 50% { stroke-opacity: 1; } }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(31,138,76,.5); } 100% { box-shadow: 0 0 0 8px transparent; } }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <div class="paper"><span class="dot" id="live-dot"></span><span id="live-text">Connecting…</span></div>
+    <h1>Solbot live</h1>
+    <p class="lede" id="lede">A Solana memecoin bot and its test bots, trading with virtual money (paper trading). Loading the latest numbers…</p>
+    <p class="error" id="error" hidden></p>
+  </header>
+
+  <section class="tiles" aria-label="Headline figures">
+    <div class="tile"><span>Main bot balance</span><b id="t-balance">—</b><small id="t-balance-sub">SOL</small></div>
+    <div class="tile"><span>Best bot so far</span><b id="t-best">—</b><small id="t-best-sub">since start</small></div>
+    <div class="tile"><span>Open trades</span><b id="t-open">—</b><small>across all bots</small></div>
+    <div class="tile"><span>Coins being watched</span><b id="t-watch">—</b><small id="t-watch-sub">—</small></div>
+    <div class="tile"><span>Data budget today</span><b id="t-budget">—</b><div class="meter"><i id="t-meter"></i></div><small>daily blockchain-data allowance; resets 5 pm Arizona</small></div>
+  </section>
+
+  <section class="card" aria-label="Bot race">
+    <div class="race-head"><h2>🏁 The bot race</h2><span class="race-lead" id="race-lead"></span></div>
+    <p>Every bot starts with the same virtual bankroll and trades the same coins with its own rules. Bars show profit or loss since the start, counting open trades at what they could sell for right now. Places shuffle live; tap a bot for its rules.</p>
+    <div id="race"></div>
+  </section>
+
+  <section class="grid">
+    <div class="card wide">
+      <h2>What the bots hold right now</h2>
+      <p>Open paper trades. “Put in” and “taken out” count every buy and sell of that coin so far; “still worth” is what the rest could sell for right now, after fees.</p>
+      <div class="scroll"><table><thead><tr><th>Coin</th><th>Bot</th><th class="num">Result</th><th class="num">Still worth (SOL)</th><th class="num">Put in (SOL)</th><th class="num narrow-hide">Taken out (SOL)</th></tr></thead><tbody id="holdings"></tbody></table></div>
+      <div class="empty" id="holdings-empty" hidden>No open trades right now.</div>
+    </div>
+    <div class="card wide">
+      <h2>Latest trades</h2>
+      <p>The newest paper buys and sells from every bot, newest first, in your local time.</p>
+      <div class="scroll"><table><thead><tr><th>Coin</th><th>Buy / sell</th><th>Bot</th><th>Why</th><th class="num">SOL</th><th>When</th></tr></thead><tbody id="trades"></tbody></table></div>
+      <div class="empty" id="trades-empty" hidden>No trades since the bot last restarted.</div>
+    </div>
+    <div class="card">
+      <h2>Why coins get turned down</h2>
+      <p>Coins on the watchlist, by the safety check that stopped them at their latest look.</p>
+      <div class="chart" id="blocks"></div>
+    </div>
+    <div class="card">
+      <h2>Biggest moves we saw</h2>
+      <p>How far each coin's price went from the first time the bot priced it, bought or not.</p>
+      <div class="chart" id="movers"></div>
+    </div>
+    <div class="card wide">
+      <h2>Coins being watched</h2>
+      <p>“Passed” means a coin cleared the safety checks; the notes say what the bot is waiting for or why it said no.</p>
+      <div class="scroll"><table><thead><tr><th>Coin</th><th>Status</th><th class="num">Move since seen</th><th>Notes</th><th class="num">Real buyers (5 min)</th></tr></thead><tbody id="watch"></tbody></table></div>
+    </div>
+  </section>
+
+  <details>
+    <summary>How to read this page</summary>
+    <dl>
+      <dt>Paper trading</dt><dd>Every trade here is simulated with virtual SOL, including realistic fees, slippage and delays. No wallet is connected and no real money moves.</dd>
+      <dt>Main bot</dt><dd>The default rule set. A test bot's rules replace it only after at least 30 closed trades show it makes money after fees.</dd>
+      <dt>Test bots</dt><dd>Variations trading the same coins side by side, each with its own paper account: different entry filters (how the coin launched, holder limits, buyer counts) and exits (stop-loss, take-profit, trailing stop).</dd>
+      <dt>Real buyers</dt><dd>Different wallets buying at least 0.01 SOL in the last 5 minutes, not counting the coin's creator or wallets that bought in the launch block.</dd>
+      <dt>Safety checks</dt><dd>The dev cannot mint more or freeze tokens, the top 10 wallets do not hold too much, the dev has no history of dumping, and the market is a real PumpSwap pool.</dd>
+      <dt>Stop-loss, take-profit, trailing stop</dt><dd>Sell when down a set amount; sell part when up enough to get the money back; let the rest ride and sell if it falls a set amount from its high.</dd>
+      <dt>Updates</dt><dd>The bot publishes new numbers every couple of minutes; this page checks every minute by itself.</dd>
+    </dl>
+  </details>
+  <footer>Paper trading only · not financial advice · numbers are simulated</footer>
+</main>
+
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const owner = location.hostname.endsWith('github.io') ? location.hostname.split('.')[0] : null;
+  const repo = location.pathname.split('/').filter(Boolean)[0] || 'solbot-live';
+  const DATA_URL = params.get('data') || (owner ? `https://raw.githubusercontent.com/${owner}/${repo}/data/data.json` : 'data.json');
+  const fmtInt = d3.format(','), pct = d3.format('+.2f'), sol = d3.format(',.3f');
+  const MEDALS = ['🥇', '🥈', '🥉'];
+  const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const local = (s) => new Date(s * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const PLAIN = {
+    TOP10_OWNER_SHARE_OVER_CAP: 'Top 10 wallets hold too much', COVERAGE_TOO_THIN_TO_BOUND: 'Holder data incomplete',
+    DEV_REPEATED_FAST_FULL_SALES: 'Dev dumped past coins', MISSING: 'Still checking', NOT_CURRENT: 'Re-checking',
+    NO_EXIT_UNTIL_MIGRATION: 'Still on the bonding curve', NO_SUPPORTED_CURVE_OR_CANONICAL_POOL: 'Not a standard PumpSwap pool',
+    FREEZE_AUTHORITY_ACTIVE: 'Dev can freeze tokens', MINT_AUTHORITY_ACTIVE: 'Dev can mint more tokens',
+    INDEPENDENT_BUYERS_UNKNOWN: 'Still counting buyers', INDEPENDENT_BUYERS_NOT_RISING: 'Buying is slowing down',
+    HOLDERS_FLAGGED: 'Top holders too concentrated', HOLDERS_UNKNOWN: 'Holder check pending', DEV_CHECK_PENDING: 'Dev check pending',
+    ENTRIES_PAUSED: 'New buys paused', HARD_STOP: 'Stop-loss', TRAILING_STOP: 'Trailing stop', TIME_STOP: 'Time limit',
+    PRINCIPAL_RECOVERY: 'Took money back out', ENTRY: 'Entry',
+  };
+  const plain = (c) => PLAIN[c] || String(c || '').toLowerCase().replace(/^gate_/, '').replace(/_/g, ' ');
+  const cls = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '');
+  const $ = (id) => document.getElementById(id);
+  let latest = null;
+
+  function upDown(v) { return (v >= 0 ? 'up ' : 'down ') + d3.format('.2f')(Math.abs(v)) + '%'; }
+
+  function headline(d) {
+    const h = d.headline;
+    const b = (t, c) => { const x = document.createElement('b'); x.textContent = t; if (c) x.className = c; return x; };
+    $('lede').replaceChildren('The main bot is ', b(upDown(h.main_pl_pct), cls(h.main_pl_pct)), ' since it started. ',
+      b(String(h.bots)), ' bots are racing on the same coins; ', b(h.best_bot), ' leads, ', b(upDown(h.best_pl_pct), cls(h.best_pl_pct)),
+      '. Everything here is paper trading with virtual money.');
+    $('t-balance').textContent = sol(h.main_equity_sol);
+    $('t-balance-sub').textContent = `SOL · started with ${sol(h.start_sol)}`;
+    $('t-best').textContent = h.best_bot;
+    $('t-best-sub').textContent = `${upDown(h.best_pl_pct)} since start`;
+    $('t-best-sub').className = cls(h.best_pl_pct);
+    $('t-open').textContent = fmtInt(h.open_trades);
+    $('t-watch').textContent = fmtInt(h.coins_watched);
+    $('t-watch-sub').textContent = `${fmtInt(h.passed)} passed every safety check`;
+    const share = h.budget_share == null ? null : Math.min(1, h.budget_share);
+    $('t-budget').textContent = share == null ? '—' : d3.format('.0%')(share);
+    $('t-meter').style.width = ((share || 0) * 100) + '%';
+    $('t-meter').style.background = share > 0.9 ? 'var(--bad)' : share > 0.7 ? 'var(--warn)' : 'var(--ok)';
+  }
+
+  const race = { ranks: new Map(), first: true, svg: null, tip: null };
+  function drawRace(rows) {
+    const el = $('race');
+    if (!race.svg) {
+      race.svg = d3.select(el).append('svg').attr('width', '100%');
+      race.svg.append('line').attr('class', 'zero');
+      race.tip = document.createElement('div'); race.tip.className = 'tip'; el.appendChild(race.tip);
+    }
+    rows = rows.map((r) => ({ ...r, pl: Number(r.pl_pct) })).sort((a, b) => a.rank - b.rank);
+    const lead = rows[0], last = rows[rows.length - 1];
+    const b = (t) => { const x = document.createElement('b'); x.textContent = t; return x; };
+    $('race-lead').replaceChildren('Leader ', b(lead.label), ' ' + pct(lead.pl) + '% · last place ', b(last.label), ' ' + pct(last.pl) + '%');
+    const w = Math.max(300, el.clientWidth), rowH = 34, top = 4, h = top + rows.length * rowH;
+    const svg = race.svg.attr('viewBox', `0 0 ${w} ${h}`).attr('height', h);
+    const labelW = Math.min(220, w * 0.44), valW = 64, nameX = 66, maxChars = Math.max(6, Math.floor((labelW - nameX) / 6.6));
+    const span = Math.max(0.5, d3.max(rows, (r) => Math.abs(r.pl)) || 0.5);
+    const x = d3.scaleLinear([-span, span], [labelW + 8, w - valW]);
+    const dur = reduced() ? 0 : 900;
+    svg.select('line.zero').attr('x1', x(0)).attr('x2', x(0)).attr('y1', 0).attr('y2', h);
+    const g = svg.selectAll('g.row').data(rows, (r) => r.bot).join((enter) => {
+      const e = enter.append('g').attr('class', 'row').style('opacity', 0)
+        .attr('transform', (r, i) => `translate(0,${race.first ? h + 20 : top + i * rowH})`);
+      e.append('rect').attr('class', 'lane').attr('x', 0).attr('y', 2).attr('rx', 8).attr('height', rowH - 6);
+      e.append('text').attr('class', 'badge').attr('x', 10).attr('y', rowH / 2 + 5);
+      e.append('text').attr('class', 'name').attr('y', rowH / 2 + 4);
+      e.append('rect').attr('class', 'bar flat').attr('y', 9).attr('height', rowH - 20).attr('rx', 4).attr('x', x(0)).attr('width', 0);
+      e.append('text').attr('class', 'val').attr('text-anchor', 'end').attr('y', rowH / 2 + 4);
+      e.append('text').attr('class', 'mover').attr('y', rowH / 2 + 4);
+      return e;
+    });
+    g.classed('lead', (r) => r.rank === 1).classed('is-main', (r) => r.bot === 'main');
+    g.select('rect.lane').attr('width', w);
+    g.select('text.badge').text((r) => MEDALS[r.rank - 1] || '#' + r.rank);
+    g.select('text.name').attr('x', nameX).text((r) => (r.label.length > maxChars ? r.label.slice(0, maxChars - 1) + '…' : r.label));
+    g.transition().duration(dur).delay((r, i) => (race.first ? i * 70 : 0)).ease(d3.easeCubicOut)
+      .attr('transform', (r, i) => `translate(0,${top + i * rowH})`).style('opacity', 1);
+    g.select('rect.bar').attr('class', (r) => 'bar ' + (r.pl > 0 ? 'up' : r.pl < 0 ? 'down' : 'flat'))
+      .transition().duration(dur * 1.3).delay((r, i) => (race.first ? 250 + i * 70 : 0))
+      .ease(d3.easeElasticOut.amplitude(1).period(0.55))
+      .tween('bar', function (r) {
+        const from = this.__pl || 0, it = d3.interpolateNumber(from, r.pl), bar = d3.select(this);
+        this.__pl = r.pl;
+        return (t) => { const v = it(t); bar.attr('x', Math.min(x(0), x(v))).attr('width', Math.max(2, Math.abs(x(v) - x(0)))); };
+      });
+    g.select('text.val').attr('x', w - 8).transition().duration(dur).tween('text', function (r) {
+      const it = d3.interpolateNumber(Number(this.dataset.v || 0), r.pl); this.dataset.v = r.pl;
+      return (t) => { this.textContent = pct(it(t)) + '%'; };
+    });
+    g.select('text.mover').attr('x', 38)
+      .attr('class', (r) => { const p = race.ranks.get(r.bot); return 'mover ' + (p == null || p === r.rank ? '' : p > r.rank ? 'up' : 'down'); })
+      .text((r) => { const p = race.ranks.get(r.bot); return p == null || p === r.rank ? '' : (p > r.rank ? '▲' + (p - r.rank) : '▼' + (r.rank - p)); });
+    const show = (ev, r) => {
+      const box = el.getBoundingClientRect();
+      race.tip.textContent = `${r.label}: ${pct(r.pl)}% · ${sol(r.equity_sol)} SOL · ${r.open} open · rules: ${r.rule || ''}`;
+      race.tip.style.left = Math.max(0, Math.min(ev.clientX - box.left + 12, box.width - 290)) + 'px';
+      race.tip.style.top = (ev.clientY - box.top + 12) + 'px';
+      race.tip.style.opacity = 1;
+    };
+    g.on('pointermove', show).on('click', show).on('pointerleave', () => { race.tip.style.opacity = 0; });
+    race.ranks = new Map(rows.map((r) => [r.bot, r.rank]));
+    race.first = false;
+  }
+
+  function td(tr, content, c) {
+    const x = document.createElement('td'); if (c) x.className = c;
+    if (content instanceof Node) x.appendChild(content); else x.textContent = content;
+    tr.appendChild(x);
+  }
+  const span = (text, c) => { const s = document.createElement('span'); s.textContent = text; if (c) s.className = c; return s; };
+
+  function tables(d) {
+    const hb = $('holdings'); hb.replaceChildren();
+    for (const r of d.holdings) {
+      const tr = document.createElement('tr');
+      td(tr, r.coin); td(tr, r.bot);
+      td(tr, r.result_pct == null ? '—' : span(d3.format('+.1f')(r.result_pct) + '%', cls(r.result_pct)), 'num');
+      td(tr, r.worth == null ? '—' : sol(r.worth), 'num'); td(tr, sol(r.put_in), 'num'); td(tr, sol(r.taken_out), 'num narrow-hide');
+      hb.appendChild(tr);
+    }
+    $('holdings-empty').hidden = d.holdings.length > 0;
+    const tb = $('trades'); tb.replaceChildren();
+    for (const r of d.trades) {
+      const tr = document.createElement('tr');
+      td(tr, r.coin); td(tr, span(r.side === 'BUY' ? 'Buy' : 'Sell', 'pill ' + (r.side === 'BUY' ? 'ok' : 'warn')));
+      td(tr, r.bot); td(tr, plain(r.reason)); td(tr, sol(r.sol), 'num'); td(tr, local(r.at_s));
+      tb.appendChild(tr);
+    }
+    $('trades-empty').hidden = d.trades.length > 0;
+    const wb = $('watch'); wb.replaceChildren();
+    const order = { ENTRY_ALLOWED: 0, BLOCKED_UNKNOWN: 1, HARD_FAIL: 2 };
+    for (const r of [...d.watchlist].sort((a, b) => (order[a.verdict] ?? 3) - (order[b.verdict] ?? 3) || (b.move ?? 0) - (a.move ?? 0))) {
+      const tr = document.createElement('tr');
+      td(tr, r.coin);
+      td(tr, span(r.verdict === 'ENTRY_ALLOWED' ? 'Passed' : r.verdict === 'HARD_FAIL' ? 'Rejected' : 'Waiting',
+        'pill ' + (r.verdict === 'ENTRY_ALLOWED' ? 'ok' : r.verdict === 'HARD_FAIL' ? 'bad' : 'warn')));
+      td(tr, r.move == null ? '—' : span(d3.format('.2f')(r.move) + 'x', r.move >= 2 ? 'up' : ''), 'num');
+      td(tr, r.why ? plain(r.why) : '—', 'note');
+      td(tr, r.buyers == null ? '—' : fmtInt(r.buyers), 'num');
+      wb.appendChild(tr);
+    }
+  }
+
+  function bars(el, rows, label, value, fmt, color) {
+    el.replaceChildren();
+    if (!rows.length) { el.textContent = 'Nothing yet.'; return; }
+    const w = Math.max(260, el.clientWidth), rowH = 26, top = 4, h = top + rows.length * rowH;
+    const svg = d3.select(el).append('svg').attr('width', '100%');
+    const probe = svg.append('text');
+    const labelW = Math.min(w * 0.55, d3.max(rows, (r) => { probe.text(label(r)); return probe.node().getComputedTextLength(); }) + 10);
+    probe.remove();
+    svg.attr('viewBox', `0 0 ${w} ${h}`);
+    const x = d3.scaleLinear([0, d3.max(rows, value) || 1], [0, Math.max(10, w - labelW - 52)]);
+    const g = svg.selectAll('g').data(rows).join('g').attr('transform', (r, i) => `translate(0,${top + i * rowH})`);
+    g.append('text').attr('y', 15).text(label);
+    g.append('rect').attr('x', labelW).attr('y', 4).attr('height', 16).attr('rx', 4).attr('width', 0).style('fill', color)
+      .transition().duration(reduced() ? 0 : 700).attr('width', (r) => Math.max(2, x(value(r))));
+    g.append('text').attr('class', 'muted').attr('x', (r) => labelW + Math.max(2, x(value(r))) + 6).attr('y', 15).text((r) => fmt(value(r)));
+  }
+
+  function render(d) {
+    latest = d;
+    headline(d);
+    drawRace(d.race);
+    tables(d);
+    bars($('blocks'), d.blocks.slice(0, 7), (r) => plain(r.reason), (r) => r.coins, fmtInt, 'var(--accent)');
+    bars($('movers'), d.watchlist.filter((r) => r.move != null).sort((a, b) => b.move - a.move).slice(0, 7),
+      (r) => r.coin, (r) => r.move, (v) => d3.format('.2f')(v) + 'x', 'var(--accent2)');
+    tick();
+  }
+
+  function tick() {
+    if (!latest) return;
+    const age = Math.max(0, Date.now() / 1000 - latest.updated_s);
+    const stale = age > 15 * 60;
+    $('live-dot').className = 'dot' + (stale ? ' stale' : '');
+    const ago = age < 90 ? 'just now' : age < 3600 ? `${Math.round(age / 60)} min ago` : `${Math.round(age / 3600)} h ago`;
+    $('live-text').textContent = (stale ? 'Waiting for the bot · ' : 'Live · ') + `updated ${ago} · paper trading, virtual money only`;
+  }
+
+  async function load() {
+    try {
+      const r = await fetch(DATA_URL + (DATA_URL.includes('?') ? '&' : '?') + 't=' + Math.floor(Date.now() / 60000), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      $('error').hidden = true;
+      if (!latest || d.updated_s !== latest.updated_s) render(d); else tick();
+    } catch (e) {
+      $('error').hidden = false;
+      $('error').textContent = 'Could not load the latest numbers yet. Retrying every minute.';
+    }
+  }
+  load();
+  setInterval(load, 60000);
+  setInterval(tick, 15000);
+  let resize;
+  window.addEventListener('resize', () => { clearTimeout(resize); resize = setTimeout(() => latest && render(latest), 200); });
+})();
+</script>
+</body>
+</html>
